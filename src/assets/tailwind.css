@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+body {
+    height: 400px;
+    width: 420px;
+}
+
+body > div:first-child {
+    height: inherit;
+    width: inherit;
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+}
