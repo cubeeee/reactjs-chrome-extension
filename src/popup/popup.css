@@ -1,3 +1,8 @@
 .background-gradient {
     background: linear-gradient(to right, rgba(252, 174, 94, 0.5) 0%, rgba(255, 77, 24, 0.5) 75%);
 }
+
+.ant-select-dropdown {
+    max-height: 200px !important;
+    overflow: hidden !important;
+}

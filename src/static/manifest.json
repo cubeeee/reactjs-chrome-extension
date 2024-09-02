@@ -1,11 +1,11 @@
 {
     "manifest_version": 3,
-    "name": "react-boilerplate",
-    "description": "react-boilerplate for chrome extension",
+    "name": "Netroxy",
+    "description": "NetProxy for chrome extension",
     "version": "1.0.0",
     "action": {
       "default_popup": "popup.html",
-      "default_title": "React Boilerplate",
+      "default_title": "NetProxy",
       "default_icon": "icon.png"
     },
     "permissions": [

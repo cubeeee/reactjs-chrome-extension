@@ -30,7 +30,9 @@
     "@ant-design/icons": "^5.4.0",
     "antd": "^5.20.3",
     "autoprefixer": "^10.4.20",
+    "axios": "^1.7.7",
     "postcss": "^8.4.42",
+    "react-copy-to-clipboard": "^5.1.0",
     "react-router-dom": "6.26",
     "tailwindcss": "^3.4.10"
   }
