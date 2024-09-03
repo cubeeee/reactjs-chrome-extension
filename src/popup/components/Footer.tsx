@@ -13,7 +13,7 @@ function Footer() {
 						target="_blank"
 						href="https://netproxy.io/"
 					>
-						Mua Proxy
+						Buy Proxy
 					</a>
 				</div>
 				<div></div>

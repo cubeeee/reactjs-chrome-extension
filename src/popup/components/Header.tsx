@@ -9,7 +9,7 @@ function Header() {
           <img alt="Netproxy" className="w-full h-full object-contain" src={'/logo.svg'} />
         </div>
         <div className="text-lg text-center px-2 font-semibold">
-          Proxy dân cư Việt Nam đảm bảo chất lượng{" "}
+          Residential proxy from Vietnam
         </div>
       </div>
     </header>

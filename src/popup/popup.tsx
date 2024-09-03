@@ -3,7 +3,7 @@ import { Button, Col, ConfigProvider, Input, InputNumber, Row, Select, Switch, T
 import axios from "axios";
 import React, { useEffect, useState } from "react";
 import './popup.css';
-import Footer from "./components/footer";
+import Footer from "./components/Footer";
 import Header from "./components/Header";
 
 const API_URL = 'https://api.netproxy.io/api/rotateProxy';
@@ -13,18 +13,20 @@ interface IInfo {
 	nextChange: number;
 	acceptIp: string;
 	isResidential: boolean;
+	country: string;
 }
 
 const Popup = () => {
 	const [locations, setLocations] = useState<string[]>([]);
 	const [apiKey, setApiKey] = useState<string | null>('');
-	const [seconds, setSeconds] = useState<number>(3);
+	const [seconds, setSeconds] = useState<number>();
 	const [loading, setLoading] = useState<boolean>(false);
 	const [isConnected, setIsConnected] = useState<boolean>(false);
 	const [location, setLocation] = useState<string>('all');
 	const [type, setType] = useState<string>('all');
 	const [error, setError] = useState<string | null>(null);
 	const [info, setInfo] = useState<IInfo>();
+	const [isAutoRefresh, setIsAutoRefresh] = useState<boolean>(false);
 
 	const handleFetchLocations = async () => {
 		try {
@@ -61,6 +63,12 @@ const Popup = () => {
 				setError(null);
 			}
 			setIsConnected(true);
+			// set value to local storage
+			localStorage.setItem('proxy', JSON.stringify(response.data.data));
+			localStorage.setItem('apiKey', apiKey);
+			localStorage.setItem('location', location || 'all');
+			localStorage.setItem('type', type);
+			// send message to background
 			chrome.runtime.sendMessage({
 				type: 'proxy_info',
 				data: response.data.data
@@ -80,6 +88,37 @@ const Popup = () => {
 		handleFetchLocations();
 	}, []);
 
+	useEffect(() => {
+		const proxy = localStorage.getItem('proxy');
+		const apiKey = localStorage.getItem('apiKey');
+		const location = localStorage.getItem('location');
+		const type = localStorage.getItem('type');
+		const savedIsAutoRefresh = localStorage.getItem('isAutoRefresh');
+		const savedSeconds = localStorage.getItem('seconds');
+		if (proxy) {
+			setInfo(JSON.parse(proxy));
+			setApiKey(apiKey || '');
+			setLocation(location || 'all');
+			setType(type || 'all');
+			setIsConnected(true);
+		}
+		if (savedIsAutoRefresh !== null) {
+			setIsAutoRefresh(savedIsAutoRefresh === 'true');
+		}
+
+		if (savedSeconds !== null) {
+			setSeconds(Number(savedSeconds) || 60);
+		}
+	}, []);
+
+	useEffect(() => {
+		localStorage.setItem('isAutoRefresh', isAutoRefresh?.toString());
+	}, [isAutoRefresh]);
+
+	useEffect(() => {
+		localStorage.setItem('seconds', seconds?.toString());
+	}, [seconds]);
+
 	return (
 		<>
 			<Header />
@@ -94,14 +133,18 @@ const Popup = () => {
 					<div className="p-4">
 						<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
 							<Col span={6}>
-								<span>Trạng thái:</span>
+								<span>Status:</span>
 							</Col>
 							<Col span={18}>
 								{
 									isConnected ? (
-										<Tag color="green">Đang kết nối</Tag>
+										<Tag color="green">
+											Connected
+										</Tag>
 									) : (
-										<Tag color="yellow">Chưa kết nôi</Tag>
+										<Tag color="yellow">
+											Disconnected
+										</Tag>
 									)
 								}
 							</Col>
@@ -109,14 +152,6 @@ const Popup = () => {
 						{
 							info && (
 								<>
-									{/* <Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
-                    <Col span={6}>
-                      <span>Địa chỉ IP:</span>
-                    </Col>
-                    <Col span={18}>
-                      <Input placeholder="IP Address" value={info?.proxy?.split(':')[0]}/>
-                    </Col>
-                  </Row> */}
 									<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
 										<Col span={6}>
 											<span>Host:</span>
@@ -136,43 +171,70 @@ const Popup = () => {
 									</Row>
 									<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
 										<Col span={6}>
-											<span>Thời gian đếm ngược:</span>
+											<span>
+												Refresh at:
+											</span>
 										</Col>
 										<Col span={18}>
-											<Input placeholder="Thời gian đếm ngược" value={info?.nextChange} disabled={true} />
+											<Input placeholder="Refresh at" value={info?.nextChange} disabled={true} />
+										</Col>
+									</Row>
+									<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
+										<Col span={6}>
+											<span>Location:</span>
+										</Col>
+										<Col span={18}>
+											<Input placeholder="Location" value={info?.country} disabled={true} />
+										</Col>
+									</Row>
+									<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
+										<Col span={6}>
+											<span>Residential:</span>
+										</Col>
+										<Col span={18}>
+											{
+												info?.isResidential ? (
+													<Tag color="green">Residential</Tag>
+												) : (
+													<Tag color="blue">Datacenter</Tag>
+												)
+											}
 										</Col>
 									</Row>
 								</>
 							)
 						}
-
-
 						<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
 							<Col span={6}>
-								<span>Tự đông kết đổi IP:</span>
+								<span>
+									Auto refresh IP:
+								</span>
 							</Col>
 							<Col span={4}>
-								<Switch />
+								<Switch onChange={(checked) => setIsAutoRefresh(checked)} value={isAutoRefresh} />
 							</Col>
 							<Col span={14} className="flex justify-end items-center gap-2">
-								<Tooltip title={'Lưu'}>
+								<Tooltip title={'Save'}>
 									<Button type="default" icon={<SaveOutlined />} />
 								</Tooltip>
-								<InputNumber min={1} defaultValue={3} />
-								<span>giây(s)</span>
+								<InputNumber min={60} defaultValue={60}
+									onChange={(value) => setSeconds(value)}
+									value={seconds} />
+								<span>(s)</span>
 							</Col>
 						</Row>
 						<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
 							<Col span={12}>
 								<div className="flex flex-col w-full gap-4">
-									<span>Quốc gia:</span>
+									<span>Location:</span>
 									<Select
-										defaultValue="all"
+										value={location || 'all'}
 										showSearch
 										className="w-full"
 										dropdownStyle={{ maxHeight: 400, overflow: 'auto' }}
+										onChange={(value) => setLocation(value)}
 									>
-										<Select.Option value="all">Tất cả</Select.Option>
+										<Select.Option value="all">All</Select.Option>
 										{locations?.map((location, index) => (
 											<Select.Option key={index} value={location}>{location}</Select.Option>
 										))}
@@ -183,11 +245,12 @@ const Popup = () => {
 								<div className="flex flex-col w-full gap-4">
 									<span>Type:</span>
 									<Select
-										defaultValue="all"
+										value={type || 'all'}
 										showSearch
 										className="w-full"
+										onChange={(value) => setType(value)}
 									>
-										<Select.Option value="all">Tất cả</Select.Option>
+										<Select.Option value="all">All</Select.Option>
 										<Select.Option value="residential">Residential</Select.Option>
 										<Select.Option value="datacenter">Datacenter</Select.Option>
 									</Select>
@@ -199,7 +262,7 @@ const Popup = () => {
 								<span>API Key</span>
 							</Col>
 							<Col span={24}>
-								<Input placeholder="Nhập API Key" onChange={(e) => setApiKey(e.target.value)} />
+								<Input value={apiKey} placeholder="Input API Key" onChange={(e) => setApiKey(e.target.value)} />
 							</Col>
 							{
 								error && (
@@ -213,8 +276,16 @@ const Popup = () => {
 							}
 						</Row>
 						<Col span={24} className="flex justify-between gap-2">
-							<Button type="dashed">Mua Proxy</Button>
-							<Button type="primary" onClick={handleRenewProxy} disabled={isConnected ? true : false}>Kết nối</Button>
+							<ConfigProvider
+								theme={{
+									token: {
+										colorPrimary: '#1677ff',
+									},
+								}}
+							>
+								<Button type="primary" href="https://netproxy.io/" target="_blank">Buy Proxy</Button>
+							</ConfigProvider>
+							<Button type="primary" onClick={handleRenewProxy} disabled={isConnected ? true : false}>Connect</Button>
 							<ConfigProvider
 								theme={{
 									token: {
@@ -222,9 +293,11 @@ const Popup = () => {
 									},
 								}}
 							>
-								<Button type="primary" onClick={handleRenewProxy} disabled={isConnected ? false : true}>Đổi IP</Button>
+								<Button type="primary" onClick={handleRenewProxy} disabled={isConnected ? false : true}>Change IP</Button>
 							</ConfigProvider>
-							<Button type="primary" danger disabled={isConnected ? false : true}>Hủy kết nối</Button>
+							<Button type="primary" danger disabled={isConnected ? false : true}>
+								Disconnect
+							</Button>
 						</Col>
 					</div>
 				</div>
