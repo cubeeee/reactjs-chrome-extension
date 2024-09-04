@@ -19,7 +19,7 @@ interface IInfo {
 const Popup = () => {
 	const [locations, setLocations] = useState<string[]>([]);
 	const [apiKey, setApiKey] = useState<string | null>('');
-	const [seconds, setSeconds] = useState<number>();
+	const [seconds, setSeconds] = useState<number | null>(60);
 	const [loading, setLoading] = useState<boolean>(false);
 	const [isConnected, setIsConnected] = useState<boolean>(false);
 	const [location, setLocation] = useState<string>('all');
@@ -27,6 +27,7 @@ const Popup = () => {
 	const [error, setError] = useState<string | null>(null);
 	const [info, setInfo] = useState<IInfo>();
 	const [isAutoRefresh, setIsAutoRefresh] = useState<boolean>(false);
+	const [countDown, setCountDown] = useState<number>(0);
 
 	const handleFetchLocations = async () => {
 		try {
@@ -35,13 +36,11 @@ const Popup = () => {
 				url: `${API_URL}/location`,
 			})
 			const data = response.data.data.countries || [];
-			console.log(`data`, data);
 			setLocations(data);
 		} catch (error) {
 			console.log(`error`, error);
 		}
 	};
-	console.log(`error`, error);
 
 	const handleRenewProxy = async () => {
 		setLoading(true);
@@ -51,36 +50,76 @@ const Popup = () => {
 				url: `${API_URL}/getNewProxy`,
 				params: {
 					apiKey,
-					location: location === 'all' ? undefined : location,
+					country: location === 'all' ? undefined : location,
 					type: type === 'all' ? undefined : type,
 				}
 			});
-			console.log(`response`, response);
 			setInfo(response.data.data);
+			setIsConnected(true);
 			if (response.data.success === false && response.data.message.includes('You can get new proxy in')) {
 				setError(response.data.message);
-			} else {
-				setError(null);
+				localStorage.setItem('proxy', JSON.stringify(response.data.data));
+				localStorage.setItem('apiKey', apiKey);
+				localStorage.setItem('location', location || 'all');
+				localStorage.setItem('type', type);
+				localStorage.setItem('isConnected', 'true');
+				return;
 			}
-			setIsConnected(true);
+			chrome.runtime.sendMessage({
+				type: 'proxy_connect',
+				data: response.data.data
+			});
+			setError(null);
 			// set value to local storage
 			localStorage.setItem('proxy', JSON.stringify(response.data.data));
 			localStorage.setItem('apiKey', apiKey);
 			localStorage.setItem('location', location || 'all');
 			localStorage.setItem('type', type);
-			// send message to background
-			chrome.runtime.sendMessage({
-				type: 'proxy_info',
-				data: response.data.data
-			}, (response) => {
-				console.log(`Response from background:`, response);
-			});
+			localStorage.setItem('isConnected', 'true');
 		} catch (error) {
 			console.log(`error`, error);
 			setError(error?.response?.data?.message || 'Có lỗi xảy ra');
 			setIsConnected(false);
+			setInfo(null);
+			localStorage.removeItem('isConnected');
+			localStorage.removeItem('proxy');
+			chrome.runtime.sendMessage({
+				type: 'proxy_disconnect',
+			});
 		} finally {
 			setLoading(false);
+		}
+	};
+	const handleDisconnectProxy = async () => {
+		try {
+			setIsConnected(false);
+			setInfo(null);
+			localStorage.removeItem('isConnected');
+			localStorage.removeItem('proxy');
+			chrome.runtime.sendMessage({
+				type: 'proxy_disconnect',
+			});
+		} catch (error) {
+			console.log(`error`, error);
+		}
+	};
+
+	const handleSaveAutoRefresh = async () => {
+		try {
+			localStorage.setItem('isAutoRefresh', isAutoRefresh.toString());
+			setCountDown(seconds);
+			await chrome.runtime.sendMessage({
+				type: 'proxy_autoChangeIp',
+				data: {
+					timeRefresh: seconds,
+					apiKey,
+					country: location,
+					type,
+					isAutoRefresh
+				}
+			});
+		} catch (error) {
+			console.log(`error`, error);
 		}
 	};
 
@@ -90,34 +129,75 @@ const Popup = () => {
 
 	useEffect(() => {
 		const proxy = localStorage.getItem('proxy');
-		const apiKey = localStorage.getItem('apiKey');
+		const apiKey = localStorage.getItem('apiKey') || '';
 		const location = localStorage.getItem('location');
 		const type = localStorage.getItem('type');
 		const savedIsAutoRefresh = localStorage.getItem('isAutoRefresh');
 		const savedSeconds = localStorage.getItem('seconds');
+		const isConnected = localStorage.getItem('isConnected');
+		const countDown = localStorage.getItem('countDown') || 0;
 		if (proxy) {
 			setInfo(JSON.parse(proxy));
-			setApiKey(apiKey || '');
-			setLocation(location || 'all');
-			setType(type || 'all');
 			setIsConnected(true);
 		}
+		setApiKey(apiKey || '');
+		setLocation(location || 'all');
+		setType(type || 'all');
 		if (savedIsAutoRefresh !== null) {
 			setIsAutoRefresh(savedIsAutoRefresh === 'true');
 		}
-
 		if (savedSeconds !== null) {
 			setSeconds(Number(savedSeconds) || 60);
+		}
+		if (isConnected === 'true') {
+			setIsConnected(true);
+		}
+		if (countDown) {
+			setCountDown(Number(countDown));
 		}
 	}, []);
 
 	useEffect(() => {
-		localStorage.setItem('isAutoRefresh', isAutoRefresh?.toString());
-	}, [isAutoRefresh]);
+		const messageListener = (message, sender, sendResponse) => {
+			if (message.type === 'proxy_autoChangeIp_result') {
+				console.log('Received new proxy result:', message.data.data);
+				setInfo(message.data.data); 
+				setIsConnected(true); 
+			}
+		};
+		chrome.runtime.onMessage.addListener(messageListener);
+		return () => {
+			chrome.runtime.onMessage.removeListener(messageListener);
+		};
+	}, []);
 
 	useEffect(() => {
-		localStorage.setItem('seconds', seconds?.toString());
-	}, [seconds]);
+		let countdownInterval: NodeJS.Timeout | null = null;
+	
+		if (isAutoRefresh && seconds !== null) {
+			countdownInterval = setInterval(() => {
+				setCountDown((prevCountDown) => {
+					if (prevCountDown > 0) {
+						return prevCountDown - 1;
+					} else {
+						return seconds; // Reset countdown to the original value
+					}
+				});
+			}, 1000); // Countdown step every 1 second
+		}
+	
+		return () => {
+			if (countdownInterval) {
+				clearInterval(countdownInterval);
+			}
+		};
+	}, [isAutoRefresh, seconds]);
+	
+	useEffect(() => {
+		// Store the current countdown in localStorage so that it persists
+		localStorage.setItem('countDown', countDown.toString());
+	}, [countDown]);
+
 
 	return (
 		<>
@@ -129,7 +209,7 @@ const Popup = () => {
 					},
 				}}
 			>
-				<div className="flex-1">
+				<div className="flex-1 w-full">
 					<div className="p-4">
 						<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
 							<Col span={6}>
@@ -142,7 +222,7 @@ const Popup = () => {
 											Connected
 										</Tag>
 									) : (
-										<Tag color="yellow">
+										<Tag color="red">
 											Disconnected
 										</Tag>
 									)
@@ -184,7 +264,7 @@ const Popup = () => {
 											<span>Location:</span>
 										</Col>
 										<Col span={18}>
-											<Input placeholder="Location" value={info?.country} disabled={true} />
+											<Input value={info?.country ? info?.country : ''} disabled={true} />
 										</Col>
 									</Row>
 									<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
@@ -207,16 +287,15 @@ const Popup = () => {
 						<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
 							<Col span={6}>
 								<span>
-									Auto refresh IP:
+									Auto change:
 								</span>
 							</Col>
-							<Col span={4}>
+							<Col span={4} className="flex flex-row items-center gap-2">
 								<Switch onChange={(checked) => setIsAutoRefresh(checked)} value={isAutoRefresh} />
+								<span className="font-bold">{countDown}</span>
 							</Col>
 							<Col span={14} className="flex justify-end items-center gap-2">
-								<Tooltip title={'Save'}>
-									<Button type="default" icon={<SaveOutlined />} />
-								</Tooltip>
+								<Button type="default" icon={<SaveOutlined />} onClick={handleSaveAutoRefresh} />
 								<InputNumber min={60} defaultValue={60}
 									onChange={(value) => setSeconds(value)}
 									value={seconds} />
@@ -258,9 +337,6 @@ const Popup = () => {
 							</Col>
 						</Row>
 						<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
-							<Col span={6}>
-								<span>API Key</span>
-							</Col>
 							<Col span={24}>
 								<Input value={apiKey} placeholder="Input API Key" onChange={(e) => setApiKey(e.target.value)} />
 							</Col>
@@ -275,17 +351,8 @@ const Popup = () => {
 								)
 							}
 						</Row>
-						<Col span={24} className="flex justify-between gap-2">
-							<ConfigProvider
-								theme={{
-									token: {
-										colorPrimary: '#1677ff',
-									},
-								}}
-							>
-								<Button type="primary" href="https://netproxy.io/" target="_blank">Buy Proxy</Button>
-							</ConfigProvider>
-							<Button type="primary" onClick={handleRenewProxy} disabled={isConnected ? true : false}>Connect</Button>
+						<Col span={24} className="flex justify-end gap-2">
+							<Button type="primary" onClick={handleRenewProxy} disabled={isConnected ? true : false} loading={!isConnected && loading ? true : false}>Connect</Button>
 							<ConfigProvider
 								theme={{
 									token: {
@@ -293,9 +360,9 @@ const Popup = () => {
 									},
 								}}
 							>
-								<Button type="primary" onClick={handleRenewProxy} disabled={isConnected ? false : true}>Change IP</Button>
+								<Button type="primary" onClick={handleRenewProxy} disabled={isConnected ? false : true} loading={isConnected && loading ? true : false}>Change IP</Button>
 							</ConfigProvider>
-							<Button type="primary" danger disabled={isConnected ? false : true}>
+							<Button type="primary" danger disabled={isConnected ? false : true} onClick={handleDisconnectProxy}>
 								Disconnect
 							</Button>
 						</Col>
