@@ -28,6 +28,7 @@ const Popup = () => {
 	const [info, setInfo] = useState<IInfo>();
 	const [isAutoRefresh, setIsAutoRefresh] = useState<boolean>(false);
 	const [countDown, setCountDown] = useState<number>(0);
+	const [timeRefresh, setTimeRefresh] = useState<number>(0);
 
 	const handleFetchLocations = async () => {
 		try {
@@ -42,40 +43,31 @@ const Popup = () => {
 		}
 	};
 
-	const handleRenewProxy = async () => {
+	const handleFetchCurrentProxy = async () => {
 		setLoading(true);
+		console.log(`chay fetch current proxy`);
+		const apiKey = localStorage.getItem('apiKey') || '';
+		const isConnected = localStorage.getItem('isConnected') === 'true' ? true : false;
+		console.log(`apiKey`, apiKey);
+		console.log(`isConnected`, isConnected);
 		try {
+			if (!apiKey || !isConnected ) {
+				setError('Please input API Key');
+				setLoading(false);
+				setIsConnected(false);
+				console.log(`error`, 'Please input API Key');
+				return;
+			}
 			const response = await axios({
 				method: 'GET',
-				url: `${API_URL}/getNewProxy`,
+				url: `${API_URL}/getCurrentProxy`,
 				params: {
 					apiKey,
-					country: location === 'all' ? undefined : location,
-					type: type === 'all' ? undefined : type,
 				}
 			});
 			setInfo(response.data.data);
+			setTimeRefresh(response.data.data.nextChange || 0);
 			setIsConnected(true);
-			if (response.data.success === false && response.data.message.includes('You can get new proxy in')) {
-				setError(response.data.message);
-				localStorage.setItem('proxy', JSON.stringify(response.data.data));
-				localStorage.setItem('apiKey', apiKey);
-				localStorage.setItem('location', location || 'all');
-				localStorage.setItem('type', type);
-				localStorage.setItem('isConnected', 'true');
-				return;
-			}
-			chrome.runtime.sendMessage({
-				type: 'proxy_connect',
-				data: response.data.data
-			});
-			setError(null);
-			// set value to local storage
-			localStorage.setItem('proxy', JSON.stringify(response.data.data));
-			localStorage.setItem('apiKey', apiKey);
-			localStorage.setItem('location', location || 'all');
-			localStorage.setItem('type', type);
-			localStorage.setItem('isConnected', 'true');
 		} catch (error) {
 			console.log(`error`, error);
 			setError(error?.response?.data?.message || 'Có lỗi xảy ra');
@@ -89,13 +81,64 @@ const Popup = () => {
 		} finally {
 			setLoading(false);
 		}
+	}
+
+	const handleRenewProxy = async () => {
+		setLoading(true);
+		console.log(`chay renew proxy`);
+		try {
+			const response = await axios({
+				method: 'GET',
+				url: `${API_URL}/getNewProxy`,
+				params: {
+					apiKey,
+					country: location === 'all' ? undefined : location,
+					type: type === 'all' ? undefined : type,
+				}
+			});
+			setInfo(response.data.data);
+			setTimeRefresh(response.data.data.nextChange || 0);
+			setIsConnected(true);
+			if (response.data.success === false && response.data.message.includes('You can get new proxy in')) {
+				setError(response.data.message);
+				localStorage.setItem('apiKey', apiKey);
+				localStorage.setItem('location', location || 'all');
+				localStorage.setItem('type', type);
+				localStorage.setItem('isConnected', 'true');
+				return;
+			}
+			chrome.runtime.sendMessage({
+				type: 'proxy_connect',
+				data: {
+					...response.data.data,
+					newTab: response?.data?.message?.includes('You can get new proxy in') ? false : true
+				}
+			});
+			setError(null);
+			// set value to local storage
+			localStorage.setItem('apiKey', apiKey);
+			localStorage.setItem('location', location || 'all');
+			localStorage.setItem('type', type);
+			localStorage.setItem('isConnected', 'true');
+		} catch (error) {
+			console.log(`error`, error);
+			setError(error?.response?.data?.message || 'Có lỗi xảy ra');
+			setIsConnected(false);
+			setInfo(null);
+			localStorage.removeItem('isConnected');
+			chrome.runtime.sendMessage({
+				type: 'proxy_disconnect',
+			});
+		} finally {
+			setLoading(false);
+		}
 	};
 
 	const handleDisconnectProxy = async () => {
 		try {
 			setIsConnected(false);
 			setInfo(null);
-			localStorage.removeItem('isConnected');
+			localStorage.setItem('isConnected', 'false');
 			localStorage.removeItem('proxy');
 			chrome.runtime.sendMessage({
 				type: 'proxy_disconnect',
@@ -145,20 +188,16 @@ const Popup = () => {
 
 	useEffect(() => {
 		handleFetchLocations();
+		handleFetchCurrentProxy();
 	}, []);
 
 	useEffect(() => {
-		const proxy = localStorage.getItem('proxy');
 		const apiKey = localStorage.getItem('apiKey') || '';
 		const location = localStorage.getItem('location');
 		const type = localStorage.getItem('type');
 		const savedIsAutoRefresh = localStorage.getItem('isAutoRefresh');
 		const savedSeconds = localStorage.getItem('seconds');
 		const isConnected = localStorage.getItem('isConnected');
-		if (proxy) {
-			setInfo(JSON.parse(proxy));
-			setIsConnected(true);
-		}
 		setApiKey(apiKey || '');
 		setLocation(location || 'all');
 		setType(type || 'all');
@@ -178,6 +217,7 @@ const Popup = () => {
 			if (message.type === 'proxy_autoChangeIp_result') {
 				console.log('Received new proxy result:', message.data.data);
 				setInfo(message.data.data);
+				setTimeRefresh(message.data.data.nextChange || 0);
 				setIsConnected(true);
 			}
 		};
@@ -199,6 +239,15 @@ const Popup = () => {
 		};
 	}, []);
 
+	useEffect(() => {
+		const interval = setInterval(() => {
+			if (timeRefresh > 0) {
+				setTimeRefresh(timeRefresh - 1);
+				localStorage.setItem('timeRefresh', timeRefresh.toString());
+			}
+		}, 1000);
+		return () => clearInterval(interval);
+	}, [timeRefresh]);
 	return (
 		<>
 			<Header />
@@ -256,7 +305,7 @@ const Popup = () => {
 											</span>
 										</Col>
 										<Col span={18}>
-											<Input placeholder="Refresh at" value={info?.nextChange} disabled={true} />
+											<Input placeholder="Refresh at" value={`${timeRefresh} s`} className='text-green-700' />
 										</Col>
 									</Row>
 									<Row gutter={[16, 16]} className="flex flex-row items-center mb-4">
@@ -295,7 +344,7 @@ const Popup = () => {
 								<span className="font-bold">{countDown}</span>
 							</Col>
 							<Col span={14} className="flex justify-end items-center gap-2">
-								<Button type="default" icon={<SaveOutlined />} onClick={handleSaveAutoRefresh} />
+								<Button type="default" onClick={handleSaveAutoRefresh}>Lưu</Button>
 								<InputNumber min={60} defaultValue={60}
 									onChange={(value) => setSeconds(value)}
 									value={seconds} />

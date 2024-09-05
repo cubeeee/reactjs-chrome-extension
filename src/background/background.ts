@@ -25,6 +25,7 @@ const resetProxy = () => {
 
 const saveConfigProxy = async (request) => {
   const proxy = request.data.proxy;
+  const newTab = request.data.newTab;
   const [host, port] = proxy.split(':');
   if (!host || !port) {
     sendMessageToPopup("getProxyFailed", { error: "Thông tin proxy không hợp lệ!" }, {});
@@ -41,18 +42,13 @@ const saveConfigProxy = async (request) => {
       bypassList: ["*netproxy.io, localhost ,127.0.0.1"]
     }
   };
-  chrome.tabs.query({ windowType: 'normal' }, function (tabs) {
-    if (tabs.length > 0) {
-      const tabNeedReload = tabs.find(item => item.url && item.url.includes('http'));
-      if (tabNeedReload) {
-        chrome.tabs.update(tabNeedReload.id, { url: tabNeedReload.url });
-      } else {
-        chrome.tabs.create({ url: 'https://api.myip.com/' });
-      }
-    } else {
-      chrome.tabs.create({ url: 'https://api.myip.com/' });
-    }
-  });
+  if (newTab === true) {
+    chrome.tabs.query({ windowType: 'normal' }, function (tabs) {
+      // https://netproxy.io/whoer-ip/
+      const url = 'https://netproxy.io/whoer-ip/';
+      chrome.tabs.create({ url: url, active: true });
+    });
+  }
   setProxy(config);
 }
 
@@ -61,107 +57,125 @@ const sleep = (timeout) => {
     setTimeout(resolve, timeout)
   })
 }
+
 let shouldStop = false;
+let currentWorker = null; // Biến lưu trữ worker hiện tại
 
 const startThreadAutoChangeProxy = async (request) => {
   try {
     const { timeRefresh, apiKey, country, type, isAutoRefresh, isConnected } = request.data;
-    shouldStop = false;
+    console.log(`data`, request.data);
+    
+    // Dừng worker hiện tại trước khi khởi động worker mới
+    if (currentWorker) {
+      console.log("Stopping current worker...");
+      shouldStop = true; // Cập nhật trạng thái để dừng worker
+      await currentWorker; // Chờ worker dừng hẳn
+      currentWorker = null; // Đặt lại worker
+    }
+
+    shouldStop = false; // Thiết lập lại biến điều kiện cho worker mới
+
     if (!isAutoRefresh && !isConnected) {
       sendMessageToPopup("autoChangeIpFailed", { error: "Auto-change proxy is disabled." }, {});
       return;
     }
-    if (isAutoRefresh) {
-      if (worker) {
-        console.log(`Close worker...`);
-        worker = null;
-      }
-      worker = async () => {
+
+    if (isAutoRefresh && timeRefresh > 0) {
+      let countdown = timeRefresh;
+
+      currentWorker = (async () => {
         while (!shouldStop) {
-          let countdown = timeRefresh; // Đặt giá trị ban đầu của thời gian đếm ngược
-            while (countdown > 0) {
-              chrome.runtime.sendMessage({
-                type: 'proxy_autoChangeIp_countdown',
-                data: countdown
-              });
-              await sleep(1000); // Đợi 1 giây
-              countdown--; // Giảm giá trị countdown  
-            }
-          console.log(`Start auto change proxy...`);
-          const url = new URL(`${API_URL}/getNewProxy`);
-          const params = {
-            apiKey,
-            country: country === 'all' ? undefined : country,
-            type: type === 'all' ? undefined : type,
-          };
-          Object.keys(params).forEach(key => params[key] && url.searchParams.append(key, params[key]));
-          const response = await fetch(url.toString(), {
-            method: 'GET',
-          });
-          const result = await response.json();
-          if (result) {
-            console.log(`New proxy:`, result);
-            saveConfigProxy(result);
-            chrome.runtime.sendMessage({
-              type: 'proxy_autoChangeIp_result',
-              data: result
+          await sleep(1000);
+          if (countdown === 0) {
+            console.log(`Start auto change proxy...`);
+            const url = new URL(`${API_URL}/getNewProxy`);
+            const params = {
+              apiKey,
+              country: country === 'all' ? undefined : country,
+              type: type === 'all' ? undefined : type,
+            };
+            Object.keys(params).forEach(key => params[key] && url.searchParams.append(key, params[key]));
+            const response = await fetch(url.toString(), {
+              method: 'GET',
             });
+            const result = await response.json();
+            if (result) {
+              console.log(`New proxy:`, result);
+              saveConfigProxy(result);
+              chrome.runtime.sendMessage({
+                type: 'proxy_autoChangeIp_result',
+                data: result
+              });
+              countdown = timeRefresh;
+            }
           }
+          countdown--;
+          chrome.runtime.sendMessage({
+            type: 'proxy_autoChangeIp_countdown',
+            data: countdown
+          });
         }
-      };
-      worker();
+        console.log("Worker stopped.");
+      })();
+
+      currentWorker.catch((error) => {
+        console.error('Worker error:', error);
+      });
     } else {
       shouldStop = true;
-      worker = null;
-      console.log(`Close worker...`);
+      currentWorker = null;
+      console.log(`Auto-change proxy stopped.`);
     }
   } catch (ex) {
     console.error(`Error when startThreadAutoChangeProxy:`, ex);
   }
 };
 
+
 const stopThreadAutoChangeIp = () => {
   shouldStop = true;
-  worker = null;
+  if (currentWorker) {
+    console.log(`Stopping worker...`);
+    currentWorker = null;
+  }
 };
 
 chrome.alarms.onAlarm.addListener(async function (alarm) {
   switch (alarm.name) {
-      case "refreshPage":
-          break;
-      default:
-          break;
+    case "refreshPage":
+      break;
+    default:
+      break;
   }
 });
-// chrome.runtime.onInstalled.addListener(function () {
-  chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
-    switch (request.type) {
-      case 'proxy_connect':
-        redirect();
-        saveConfigProxy(request);
-        break;
-      case "proxy_change":
-        saveConfigProxy(request);
-        break;
-      case "proxy_disconnect":
-        clearAlarm("flagLoop");
-        clearAlarm("refreshPage");
-        resetProxy();
-        redirect();
-        stopThreadAutoChangeIp();
-        break;
-      case "proxy_autoChangeIp":
-        startThreadAutoChangeProxy(request);
-        break;
-      case "proxy_stopAutoChangeIp":
-        stopThreadAutoChangeIp();
-        break;
-      default:
-        console.error('do nothing with this request');
-        break;
-    }
-  });
-// });
+chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+  switch (request.type) {
+    case 'proxy_connect':
+      redirect();
+      saveConfigProxy(request);
+      break;
+    case "proxy_change":
+      saveConfigProxy(request);
+      break;
+    case "proxy_disconnect":
+      clearAlarm("flagLoop");
+      clearAlarm("refreshPage");
+      resetProxy();
+      redirect();
+      stopThreadAutoChangeIp();
+      break;
+    case "proxy_autoChangeIp":
+      startThreadAutoChangeProxy(request);
+      break;
+    case "proxy_stopAutoChangeIp":
+      stopThreadAutoChangeIp();
+      break;
+    default:
+      console.error('do nothing with this request');
+      break;
+  }
+});
 
 
 const setProxy = (serverConfig: {
