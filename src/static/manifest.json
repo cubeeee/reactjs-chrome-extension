@@ -21,6 +21,7 @@
     "48": "icon.png",
     "128": "icon.png"
   },
+  "incognito": "spanning",
   "options_page": "options.html",
   "background": {
     "service_worker": "background.js"

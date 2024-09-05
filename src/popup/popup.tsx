@@ -90,6 +90,7 @@ const Popup = () => {
 			setLoading(false);
 		}
 	};
+
 	const handleDisconnectProxy = async () => {
 		try {
 			setIsConnected(false);
@@ -106,8 +107,13 @@ const Popup = () => {
 
 	const handleSaveAutoRefresh = async () => {
 		try {
-			localStorage.setItem('isAutoRefresh', isAutoRefresh.toString());
-			setCountDown(seconds);
+			if (!isConnected) {
+				setError('Please connect to proxy first');
+				return;
+			}
+			setIsAutoRefresh(true);
+			localStorage.setItem('isAutoRefresh', 'true');
+			localStorage.setItem('seconds', seconds.toString());
 			await chrome.runtime.sendMessage({
 				type: 'proxy_autoChangeIp',
 				data: {
@@ -115,12 +121,26 @@ const Popup = () => {
 					apiKey,
 					country: location,
 					type,
-					isAutoRefresh
+					isAutoRefresh: true,
+					isConnected
 				}
 			});
 		} catch (error) {
 			console.log(`error`, error);
 		}
+	};
+
+	const handleStopAutoRefresh = async (value: boolean) => {
+		if (!value) {
+			setIsAutoRefresh(false);
+			localStorage.setItem('isAutoRefresh', 'false');
+			await chrome.runtime.sendMessage({
+				type: 'proxy_stopAutoChangeIp',
+				data: {}
+			});
+			return;
+		}
+		setIsAutoRefresh(true);
 	};
 
 	useEffect(() => {
@@ -135,7 +155,6 @@ const Popup = () => {
 		const savedIsAutoRefresh = localStorage.getItem('isAutoRefresh');
 		const savedSeconds = localStorage.getItem('seconds');
 		const isConnected = localStorage.getItem('isConnected');
-		const countDown = localStorage.getItem('countDown') || 0;
 		if (proxy) {
 			setInfo(JSON.parse(proxy));
 			setIsConnected(true);
@@ -152,17 +171,14 @@ const Popup = () => {
 		if (isConnected === 'true') {
 			setIsConnected(true);
 		}
-		if (countDown) {
-			setCountDown(Number(countDown));
-		}
 	}, []);
 
 	useEffect(() => {
-		const messageListener = (message, sender, sendResponse) => {
+		const messageListener = (message) => {
 			if (message.type === 'proxy_autoChangeIp_result') {
 				console.log('Received new proxy result:', message.data.data);
-				setInfo(message.data.data); 
-				setIsConnected(true); 
+				setInfo(message.data.data);
+				setIsConnected(true);
 			}
 		};
 		chrome.runtime.onMessage.addListener(messageListener);
@@ -172,32 +188,16 @@ const Popup = () => {
 	}, []);
 
 	useEffect(() => {
-		let countdownInterval: NodeJS.Timeout | null = null;
-	
-		if (isAutoRefresh && seconds !== null) {
-			countdownInterval = setInterval(() => {
-				setCountDown((prevCountDown) => {
-					if (prevCountDown > 0) {
-						return prevCountDown - 1;
-					} else {
-						return seconds; // Reset countdown to the original value
-					}
-				});
-			}, 1000); // Countdown step every 1 second
-		}
-	
-		return () => {
-			if (countdownInterval) {
-				clearInterval(countdownInterval);
+		const messageListener = (message) => {
+			if (message.type === 'proxy_autoChangeIp_countdown') {
+				setCountDown(message?.data);
 			}
 		};
-	}, [isAutoRefresh, seconds]);
-	
-	useEffect(() => {
-		// Store the current countdown in localStorage so that it persists
-		localStorage.setItem('countDown', countDown.toString());
-	}, [countDown]);
-
+		chrome.runtime.onMessage.addListener(messageListener);
+		return () => {
+			chrome.runtime.onMessage.removeListener(messageListener);
+		};
+	}, []);
 
 	return (
 		<>
@@ -291,7 +291,7 @@ const Popup = () => {
 								</span>
 							</Col>
 							<Col span={4} className="flex flex-row items-center gap-2">
-								<Switch onChange={(checked) => setIsAutoRefresh(checked)} value={isAutoRefresh} />
+								<Switch onChange={(checked) => handleStopAutoRefresh(checked)} value={isAutoRefresh} />
 								<span className="font-bold">{countDown}</span>
 							</Col>
 							<Col span={14} className="flex justify-end items-center gap-2">
