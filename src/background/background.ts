@@ -44,7 +44,6 @@ const saveConfigProxy = async (request) => {
   };
   if (newTab === true) {
     chrome.tabs.query({ windowType: 'normal' }, function (tabs) {
-      // https://netproxy.io/whoer-ip/
       const url = 'https://netproxy.io/whoer-ip/';
       chrome.tabs.create({ url: url, active: true });
     });
@@ -59,36 +58,27 @@ const sleep = (timeout) => {
 }
 
 let shouldStop = false;
-let currentWorker = null; // Biến lưu trữ worker hiện tại
-
+let currentWorker = null; 
 const startThreadAutoChangeProxy = async (request) => {
   try {
     const { timeRefresh, apiKey, country, type, isAutoRefresh, isConnected } = request.data;
-    console.log(`data`, request.data);
-    
-    // Dừng worker hiện tại trước khi khởi động worker mới
     if (currentWorker) {
       console.log("Stopping current worker...");
-      shouldStop = true; // Cập nhật trạng thái để dừng worker
-      await currentWorker; // Chờ worker dừng hẳn
-      currentWorker = null; // Đặt lại worker
+      shouldStop = true; 
+      await currentWorker; 
+      currentWorker = null; 
     }
-
-    shouldStop = false; // Thiết lập lại biến điều kiện cho worker mới
-
+    shouldStop = false; 
     if (!isAutoRefresh && !isConnected) {
       sendMessageToPopup("autoChangeIpFailed", { error: "Auto-change proxy is disabled." }, {});
       return;
     }
-
     if (isAutoRefresh && timeRefresh > 0) {
       let countdown = timeRefresh;
-
       currentWorker = (async () => {
         while (!shouldStop) {
           await sleep(1000);
           if (countdown === 0) {
-            console.log(`Start auto change proxy...`);
             const url = new URL(`${API_URL}/getNewProxy`);
             const params = {
               apiKey,
@@ -118,7 +108,6 @@ const startThreadAutoChangeProxy = async (request) => {
         }
         console.log("Worker stopped.");
       })();
-
       currentWorker.catch((error) => {
         console.error('Worker error:', error);
       });
@@ -131,7 +120,28 @@ const startThreadAutoChangeProxy = async (request) => {
     console.error(`Error when startThreadAutoChangeProxy:`, ex);
   }
 };
-
+// Listen for failed requests
+chrome.webRequest.onErrorOccurred.addListener(
+  async function(details) {
+    if (details.error === "net::ERR_PROXY_CONNECTION_FAILED") {
+      console.log("Proxy connection failed. Attempting to fetch a new proxy...");
+      const apiKey = localStorage.getItem('apiKey');
+      console.log(`apiKey`, apiKey);
+      const request = {
+        data: {
+          timeRefresh: 0, 
+          apiKey: apiKey, 
+          country: 'all',  
+          type: 'all', 
+          isAutoRefresh: true,  
+          isConnected: true 
+        }
+      };
+      startThreadAutoChangeProxy(request);
+    }
+  },
+  { urls: ["<all_urls>"] } 
+);
 
 const stopThreadAutoChangeIp = () => {
   shouldStop = true;
@@ -201,9 +211,8 @@ const redirect = () => {
   chrome.proxy.settings.set({ value: { mode: "direct" }, scope: "regular" });
   chrome.storage.sync.set({ tx_proxy: null });
 };
-redirect();
-
-// chrome.webRequest.onAuthRequired.addListener(function (details) {
-//   console.log(`details`, details);
-//   return { authCredentials: { username: "netproxy", password: "netproxy" } };
-// }, { urls: ['<all_urls>'] }, ['blocking']);
+// redirect();
+chrome.webRequest.onAuthRequired.addListener(function (details) {
+  console.log(`details`, details);
+  return { authCredentials: { username: "netproxy", password: "netproxy" } };
+}, { urls: ['<all_urls>'] }, ['blocking']);

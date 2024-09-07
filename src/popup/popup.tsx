@@ -45,11 +45,8 @@ const Popup = () => {
 
 	const handleFetchCurrentProxy = async () => {
 		setLoading(true);
-		console.log(`chay fetch current proxy`);
 		const apiKey = localStorage.getItem('apiKey') || '';
 		const isConnected = localStorage.getItem('isConnected') === 'true' ? true : false;
-		console.log(`apiKey`, apiKey);
-		console.log(`isConnected`, isConnected);
 		try {
 			if (!apiKey || !isConnected ) {
 				setError('Please input API Key');
@@ -85,7 +82,6 @@ const Popup = () => {
 
 	const handleRenewProxy = async () => {
 		setLoading(true);
-		console.log(`chay renew proxy`);
 		try {
 			const response = await axios({
 				method: 'GET',
@@ -105,6 +101,13 @@ const Popup = () => {
 				localStorage.setItem('location', location || 'all');
 				localStorage.setItem('type', type);
 				localStorage.setItem('isConnected', 'true');
+				chrome.runtime.sendMessage({
+					type: 'proxy_connect',
+					data: {
+						...response.data.data,
+						newTab: response?.data?.message?.includes('You can get new proxy in') ? false : true
+					}
+				});
 				return;
 			}
 			chrome.runtime.sendMessage({
@@ -138,8 +141,10 @@ const Popup = () => {
 		try {
 			setIsConnected(false);
 			setInfo(null);
+			setIsAutoRefresh(false);
 			localStorage.setItem('isConnected', 'false');
 			localStorage.removeItem('proxy');
+			localStorage.removeItem('isAutoRefresh');
 			chrome.runtime.sendMessage({
 				type: 'proxy_disconnect',
 			});
@@ -182,8 +187,22 @@ const Popup = () => {
 				data: {}
 			});
 			return;
+		} else {
+			setIsAutoRefresh(true);
+			localStorage.setItem('isAutoRefresh', 'true');
+			localStorage.setItem('seconds', seconds.toString());
+			await chrome.runtime.sendMessage({
+				type: 'proxy_autoChangeIp',
+				data: {
+					timeRefresh: seconds,
+					apiKey,
+					country: location,
+					type,
+					isAutoRefresh: true,
+					isConnected
+				}
+			});
 		}
-		setIsAutoRefresh(true);
 	};
 
 	useEffect(() => {
