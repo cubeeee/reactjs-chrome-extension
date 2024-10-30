@@ -1,10 +1,12 @@
-import { SaveOutlined } from "@ant-design/icons";
-import { Button, Col, ConfigProvider, Input, InputNumber, Row, Select, Switch, Tag, Tooltip } from "antd";
+import { Button, Col, ConfigProvider, Input, InputNumber, Row, Select, Switch, Tag } from "antd";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
-import './popup.css';
 import Footer from "./components/Footer";
 import Header from "./components/Header";
+import './popup.css';
+import { data } from "autoprefixer";
+// import * as https from 'https';
+// import { HttpsProxyAgent } from 'https-proxy-agent';
 
 const API_URL = 'https://api.netproxy.io/api/rotateProxy';
 interface IInfo {
@@ -14,6 +16,8 @@ interface IInfo {
 	acceptIp: string;
 	isResidential: boolean;
 	country: string;
+	username: string;
+	password: string
 }
 
 const Popup = () => {
@@ -48,7 +52,7 @@ const Popup = () => {
 		const apiKey = localStorage.getItem('apiKey') || '';
 		const isConnected = localStorage.getItem('isConnected') === 'true' ? true : false;
 		try {
-			if (!apiKey || !isConnected ) {
+			if (!apiKey || !isConnected) {
 				setError('Please input API Key');
 				setLoading(false);
 				setIsConnected(false);
@@ -65,6 +69,13 @@ const Popup = () => {
 			setInfo(response.data.data);
 			setTimeRefresh(response.data.data.nextChange || 0);
 			setIsConnected(true);
+			chrome.runtime.sendMessage({
+				type: 'setApiKey',
+				data: {
+					apiKey
+				}
+			});
+			return;
 		} catch (error) {
 			console.log(`error`, error);
 			setError(error?.response?.data?.message || 'Có lỗi xảy ra');
@@ -108,6 +119,7 @@ const Popup = () => {
 						newTab: response?.data?.message?.includes('You can get new proxy in') ? false : true
 					}
 				});
+				
 				return;
 			}
 			chrome.runtime.sendMessage({
@@ -229,6 +241,12 @@ const Popup = () => {
 		if (isConnected === 'true') {
 			setIsConnected(true);
 		}
+		chrome.runtime.sendMessage({
+			type: 'setApiKey',
+			data: {
+				apiKey
+			}
+		});
 	}, []);
 
 	useEffect(() => {
@@ -267,6 +285,7 @@ const Popup = () => {
 		}, 1000);
 		return () => clearInterval(interval);
 	}, [timeRefresh]);
+
 	return (
 		<>
 			<Header />

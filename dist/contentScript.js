@@ -1,0 +1,1 @@
+window.onload=o=>{console.log("page is fully loaded")};
