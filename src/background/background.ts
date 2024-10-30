@@ -1,5 +1,8 @@
 const API_URL = 'https://api.netproxy.io/api/rotateProxy';
 var worker = null;
+let apiKeyLocal = null
+let countryLocal = 'all'
+let typeLocal = 'all'
 
 const sendMessageToPopup = async (command, message, config) => {
   chrome.runtime.sendMessage({ command, message, config }, function (response) { });
@@ -42,12 +45,12 @@ const saveConfigProxy = async (request) => {
       bypassList: ["*netproxy.io, localhost ,127.0.0.1"]
     }
   };
-  if (newTab === true) {
-    chrome.tabs.query({ windowType: 'normal' }, function (tabs) {
-      const url = 'https://netproxy.io/whoer-ip/';
-      chrome.tabs.create({ url: url, active: true });
-    });
-  }
+  // if (newTab === true) {
+  //   chrome.tabs.query({ windowType: 'normal' }, function (tabs) {
+  //     const url = 'https://netproxy.io/whoer-ip/';
+  //     chrome.tabs.create({ url: url, active: true });
+  //   });
+  // }
   setProxy(config);
 }
 
@@ -58,17 +61,19 @@ const sleep = (timeout) => {
 }
 
 let shouldStop = false;
-let currentWorker = null; 
+let currentWorker = null;
 const startThreadAutoChangeProxy = async (request) => {
   try {
     const { timeRefresh, apiKey, country, type, isAutoRefresh, isConnected } = request.data;
+    countryLocal = country
+    typeLocal = type
     if (currentWorker) {
       console.log("Stopping current worker...");
-      shouldStop = true; 
-      await currentWorker; 
-      currentWorker = null; 
+      shouldStop = true;
+      await currentWorker;
+      currentWorker = null;
     }
-    shouldStop = false; 
+    shouldStop = false;
     if (!isAutoRefresh && !isConnected) {
       sendMessageToPopup("autoChangeIpFailed", { error: "Auto-change proxy is disabled." }, {});
       return;
@@ -120,28 +125,7 @@ const startThreadAutoChangeProxy = async (request) => {
     console.error(`Error when startThreadAutoChangeProxy:`, ex);
   }
 };
-// Listen for failed requests
-chrome.webRequest.onErrorOccurred.addListener(
-  async function(details) {
-    if (details.error === "net::ERR_PROXY_CONNECTION_FAILED") {
-      console.log("Proxy connection failed. Attempting to fetch a new proxy...");
-      const apiKey = localStorage.getItem('apiKey');
-      console.log(`apiKey`, apiKey);
-      const request = {
-        data: {
-          timeRefresh: 0, 
-          apiKey: apiKey, 
-          country: 'all',  
-          type: 'all', 
-          isAutoRefresh: true,  
-          isConnected: true 
-        }
-      };
-      startThreadAutoChangeProxy(request);
-    }
-  },
-  { urls: ["<all_urls>"] } 
-);
+
 
 const stopThreadAutoChangeIp = () => {
   shouldStop = true;
@@ -181,6 +165,9 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     case "proxy_stopAutoChangeIp":
       stopThreadAutoChangeIp();
       break;
+    case "setApiKey":
+      apiKeyLocal = request.data.apiKey
+      break;
     default:
       console.error('do nothing with this request');
       break;
@@ -212,7 +199,59 @@ const redirect = () => {
   chrome.storage.sync.set({ tx_proxy: null });
 };
 // redirect();
-chrome.webRequest.onAuthRequired.addListener(function (details) {
-  console.log(`details`, details);
-  return { authCredentials: { username: "netproxy", password: "netproxy" } };
-}, { urls: ['<all_urls>'] }, ['blocking']);
+
+
+const handleFetchNewIp = async () => {
+  const url = new URL(`${API_URL}/getNewProxy`);
+  console.log(`apiKey`, apiKeyLocal);
+  const params = {
+    apiKey: apiKeyLocal,
+    country: countryLocal,
+    type: typeLocal,
+  };
+  Object.keys(params).forEach(key => params[key] && url.searchParams.append(key, params[key]));
+
+  let success = false;
+
+  while (!success) {
+    try {
+      const response = await fetch(url.toString(), { method: 'GET' });
+      const result = await response.json();
+      if (result && result.data && result.data.proxy) {
+        console.log("New proxy fetched:", result.data.proxy);
+        await saveConfigProxy(result); // Apply the new proxy
+        success = true; // Stop the loop on success
+      } else {
+        console.error("Failed to fetch new proxy: Invalid response format");
+      }
+    } catch (error) {
+      console.error("Error fetching new proxy, retrying...", error);
+    }
+    
+    // Delay before retrying to avoid spamming the server
+    if (!success) {
+      await sleep(10000); // Wait for 2 seconds before retrying
+    }
+  }
+};
+
+chrome.webRequest.onAuthRequired.addListener(
+  function (details) {
+    console.log("Auth required for proxy, fetching a new one...");
+    handleFetchNewIp(); // Automatically fetch new proxy
+    return { cancel: true }; // Prevent the prompt from appearing
+  },
+  { urls: ["<all_urls>"] },
+  ["blocking"]
+);
+
+chrome.webRequest.onErrorOccurred.addListener(
+  async function (details) {
+    if (details.error === "net::ERR_PROXY_CONNECTION_FAILED") {
+      console.log("Proxy connection failed, fetching a new proxy...");
+      handleFetchNewIp(); // Fetch a new proxy
+    }
+  },
+  { urls: ["<all_urls>"] }
+);
+
