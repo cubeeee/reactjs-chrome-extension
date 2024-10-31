@@ -9,7 +9,7 @@ function Header() {
           <img alt="Netproxy" className="w-full h-full object-contain" src={'/logo.svg'} />
         </div>
         <div className="text-lg text-center px-2 font-semibold">
-          Residential proxy from Vietnam
+          Residential Proxy P2P Is The Bestest
         </div>
       </div>
     </header>

@@ -247,6 +247,12 @@ const Popup = () => {
 		chrome.storage.local.set({ apiKey: apiKey }, () => {
 			console.log('API Key saved successfully:', apiKey);
 		});
+		chrome.storage.local.set({ location: location }, () => {
+			console.log('location saved successfully:', location);
+		});
+		chrome.storage.local.set({ type: type }, () => {
+			console.log('type saved successfully:', type);
+		});
 	}, []);
 
 	useEffect(() => {
@@ -290,6 +296,12 @@ const Popup = () => {
 	useEffect(() => {
     localStorage.setItem('location', location);
     localStorage.setItem('type', type);
+		chrome.storage.local.set({ location: location }, () => {
+			console.log('location saved successfully:', location);
+		});
+		chrome.storage.local.set({ type: type }, () => {
+			console.log('type saved successfully:', type);
+		});
 }, [location, type]);
 	return (
 		<>

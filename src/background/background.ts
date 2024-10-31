@@ -216,17 +216,45 @@ const getApiKey = async () => {
   });
 };
 
+const getLocation = async () => {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get("location", (result) => {
+      console.log(`result`, result);
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        console.log('Fetched Location:', result.location);
+        resolve(result.location);
+      }
+    });
+  });
+};
+
+const getType = async () => {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get("type", (result) => {
+      console.log(`result`, result);
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        console.log('Fetched type:', result.type);
+        resolve(result.type);
+      }
+    });
+  });
+};
+
 const handleFetchNewIp = async () => {
   const url = new URL(`${API_URL}/getNewProxy`);
-  // Await the API key retrieval from storage
   const apiKey = await getApiKey();
-  // console.log(`apiKey`, apiKey);
-  // console.log(`apiKeyLocal`, apiKeyLocal);
+  const country = await getLocation();
+  const type = await getType();
+
   let data = null;
   const params = {
-    apiKey: apiKey || apiKeyLocal, // Use full key-value syntax to avoid TypeScript errors
-    country: countryLocal,
-    type: typeLocal,
+    apiKey: apiKey || apiKeyLocal, 
+    country: country || countryLocal,
+    type: type || typeLocal,
   };
 
   // Append query parameters to URL
@@ -256,10 +284,6 @@ const handleFetchNewIp = async () => {
   }
   return data;
 };
-
-
-let cachedUsername = null;
-let cachedPassword = null;
 
 const initializeProxyAuth = async () => {
   const data = await handleFetchNewIp();
