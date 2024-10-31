@@ -167,7 +167,6 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
       break;
     case "setApiKey":
       apiKeyLocal = request.data.apiKey
-      console.log(`apiKey`, apiKeyLocal);
       break;
     default:
       console.error('do nothing with this request');
@@ -204,6 +203,7 @@ const redirect = () => {
 
 const handleFetchNewIp = async () => {
   const url = new URL(`${API_URL}/getNewProxy`);
+  console.log(`apikey`, apiKeyLocal);
   let data = null
   const params = {
     apiKey: apiKeyLocal,
@@ -277,7 +277,7 @@ chrome.webRequest.onErrorOccurred.addListener(
   async function (details) {
     if (details.error === "net::ERR_PROXY_CONNECTION_FAILED") {
       console.log("Proxy connection failed, fetching a new proxy...");
-      handleFetchNewIp(); // Fetch a new proxy
+      await handleFetchNewIp(); // Fetch a new proxy
     }
   },
   { urls: ["<all_urls>"] }
