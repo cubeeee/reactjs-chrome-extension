@@ -45,6 +45,7 @@ const saveConfigProxy = async (request) => {
       bypassList: ["*netproxy.io, localhost ,127.0.0.1"]
     }
   };
+  console.log('config', config);
   // if (newTab === true) {
   //   chrome.tabs.query({ windowType: 'normal' }, function (tabs) {
   //     const url = 'https://netproxy.io/whoer-ip/';
@@ -201,15 +202,35 @@ const redirect = () => {
 // redirect();
 
 
+const getApiKey = async () => {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get("apiKey", (result) => {
+      console.log(`result`, result);
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        console.log('Fetched API Key:', result.apiKey);
+        resolve(result.apiKey);
+      }
+    });
+  });
+};
+
 const handleFetchNewIp = async () => {
   const url = new URL(`${API_URL}/getNewProxy`);
-  console.log(`apikey`, apiKeyLocal);
-  let data = null
+  // Await the API key retrieval from storage
+  const apiKey = await getApiKey();
+  console.log(`apiKey`, apiKey);
+  console.log(`apiKeyLocal`, apiKeyLocal);
+
+  let data = null;
   const params = {
-    apiKey: apiKeyLocal,
+    apiKey: apiKey || apiKeyLocal, // Use full key-value syntax to avoid TypeScript errors
     country: countryLocal,
     type: typeLocal,
   };
+
+  // Append query parameters to URL
   Object.keys(params).forEach(key => params[key] && url.searchParams.append(key, params[key]));
 
   let success = false;
@@ -222,7 +243,7 @@ const handleFetchNewIp = async () => {
         console.log("New proxy fetched:", result.data.proxy);
         await saveConfigProxy(result); // Apply the new proxy
         success = true; // Stop the loop on success
-        data = result.data
+        data = result.data;
       } else {
         console.error("Failed to fetch new proxy: Invalid response format");
       }
@@ -230,12 +251,11 @@ const handleFetchNewIp = async () => {
       console.error("Error fetching new proxy, retrying...", error);
     }
 
-    // Delay before retrying to avoid spamming the server
     if (!success) {
-      await sleep(10000); // Wait for 2 seconds before retrying
+      await sleep(10000); // Wait for 10 seconds before retrying
     }
   }
-  return data
+  return data;
 };
 
 
@@ -244,23 +264,24 @@ let cachedPassword = null;
 
 const initializeProxyAuth = async () => {
   const data = await handleFetchNewIp();
-  if (data) {
-    cachedUsername = data.username;
-    cachedPassword = data.password;
+  return {
+    username: data.username,
+    password: data.password
   }
 };
 
-// Gọi hàm này khi bạn khởi động extension hoặc khi bạn thiết lập proxy mới
 initializeProxyAuth();
 
 chrome.webRequest.onAuthRequired.addListener(
-  function (details) {
-    if (cachedUsername && cachedPassword) {
+  async function (details) {
+    console.log(`details`, details);
+    const { username, password } = await initializeProxyAuth()
+    if ( username && password ) {
       console.log("Using cached credentials for proxy authentication...");
       return {
         authCredentials: {
-          username: cachedUsername,
-          password: cachedPassword
+          username,
+          password
         }
       };
     } else {
@@ -282,4 +303,3 @@ chrome.webRequest.onErrorOccurred.addListener(
   },
   { urls: ["<all_urls>"] }
 );
-

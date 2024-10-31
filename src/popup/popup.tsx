@@ -69,11 +69,8 @@ const Popup = () => {
 			setInfo(response.data.data);
 			setTimeRefresh(response.data.data.nextChange || 0);
 			setIsConnected(true);
-			chrome.runtime.sendMessage({
-				type: 'setApiKey',
-				data: {
-					apiKey
-				}
+			chrome.storage.local.set({ apiKey: apiKey }, () => {
+				console.log('API Key saved successfully:', apiKey);
 			});
 			return;
 		} catch (error) {
@@ -119,7 +116,9 @@ const Popup = () => {
 						newTab: response?.data?.message?.includes('You can get new proxy in') ? false : true
 					}
 				});
-				
+				chrome.storage.local.set({ apiKey: apiKey }, () => {
+					console.log('API Key saved successfully:', apiKey);
+				});
 				return;
 			}
 			chrome.runtime.sendMessage({
@@ -128,6 +127,9 @@ const Popup = () => {
 					...response.data.data,
 					newTab: response?.data?.message?.includes('You can get new proxy in') ? false : true
 				}
+			});
+			chrome.storage.local.set({ apiKey: apiKey }, () => {
+				console.log('API Key saved successfully:', apiKey);
 			});
 			setError(null);
 			// set value to local storage
@@ -160,6 +162,7 @@ const Popup = () => {
 			chrome.runtime.sendMessage({
 				type: 'proxy_disconnect',
 			});
+
 		} catch (error) {
 			console.log(`error`, error);
 		}
@@ -241,11 +244,8 @@ const Popup = () => {
 		if (isConnected === 'true') {
 			setIsConnected(true);
 		}
-		chrome.runtime.sendMessage({
-			type: 'setApiKey',
-			data: {
-				apiKey
-			}
+		chrome.storage.local.set({ apiKey: apiKey }, () => {
+			console.log('API Key saved successfully:', apiKey);
 		});
 	}, []);
 
