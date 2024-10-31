@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Netroxy Back Connect",
+  "name": "Netproxy Back Connect",
   "description": "NetProxy for chrome extension",
   "version": "1.0.0",
   "action": {
