@@ -167,6 +167,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
       break;
     case "setApiKey":
       apiKeyLocal = request.data.apiKey
+      console.log(`apiKey`, apiKeyLocal);
       break;
     default:
       console.error('do nothing with this request');
@@ -203,7 +204,7 @@ const redirect = () => {
 
 const handleFetchNewIp = async () => {
   const url = new URL(`${API_URL}/getNewProxy`);
-  console.log(`apiKey`, apiKeyLocal);
+  let data = null
   const params = {
     apiKey: apiKeyLocal,
     country: countryLocal,
@@ -221,29 +222,56 @@ const handleFetchNewIp = async () => {
         console.log("New proxy fetched:", result.data.proxy);
         await saveConfigProxy(result); // Apply the new proxy
         success = true; // Stop the loop on success
+        data = result.data
       } else {
         console.error("Failed to fetch new proxy: Invalid response format");
       }
     } catch (error) {
       console.error("Error fetching new proxy, retrying...", error);
     }
-    
+
     // Delay before retrying to avoid spamming the server
     if (!success) {
       await sleep(10000); // Wait for 2 seconds before retrying
     }
   }
+  return data
 };
+
+
+let cachedUsername = null;
+let cachedPassword = null;
+
+const initializeProxyAuth = async () => {
+  const data = await handleFetchNewIp();
+  if (data) {
+    cachedUsername = data.username;
+    cachedPassword = data.password;
+  }
+};
+
+// Gọi hàm này khi bạn khởi động extension hoặc khi bạn thiết lập proxy mới
+initializeProxyAuth();
 
 chrome.webRequest.onAuthRequired.addListener(
   function (details) {
-    console.log("Auth required for proxy, fetching a new one...");
-    handleFetchNewIp(); // Automatically fetch new proxy
-    return { cancel: true }; // Prevent the prompt from appearing
+    if (cachedUsername && cachedPassword) {
+      console.log("Using cached credentials for proxy authentication...");
+      return {
+        authCredentials: {
+          username: cachedUsername,
+          password: cachedPassword
+        }
+      };
+    } else {
+      console.error("No cached credentials found. Please re-fetch proxy credentials.");
+      return { cancel: true };
+    }
   },
   { urls: ["<all_urls>"] },
   ["blocking"]
 );
+
 
 chrome.webRequest.onErrorOccurred.addListener(
   async function (details) {
