@@ -286,6 +286,11 @@ const Popup = () => {
 		return () => clearInterval(interval);
 	}, [timeRefresh]);
 
+
+	useEffect(() => {
+    localStorage.setItem('location', location);
+    localStorage.setItem('type', type);
+}, [location, type]);
 	return (
 		<>
 			<Header />
@@ -382,7 +387,7 @@ const Popup = () => {
 								<span className="font-bold">{countDown}</span>
 							</Col>
 							<Col span={14} className="flex justify-end items-center gap-2">
-								<Button type="default" onClick={handleSaveAutoRefresh}>Lưu</Button>
+								<Button type="default" onClick={handleSaveAutoRefresh}>Save</Button>
 								<InputNumber min={60} defaultValue={60}
 									onChange={(value) => setSeconds(value)}
 									value={seconds} />

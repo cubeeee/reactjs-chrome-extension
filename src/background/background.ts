@@ -220,9 +220,8 @@ const handleFetchNewIp = async () => {
   const url = new URL(`${API_URL}/getNewProxy`);
   // Await the API key retrieval from storage
   const apiKey = await getApiKey();
-  console.log(`apiKey`, apiKey);
-  console.log(`apiKeyLocal`, apiKeyLocal);
-
+  // console.log(`apiKey`, apiKey);
+  // console.log(`apiKeyLocal`, apiKeyLocal);
   let data = null;
   const params = {
     apiKey: apiKey || apiKeyLocal, // Use full key-value syntax to avoid TypeScript errors
@@ -274,7 +273,7 @@ initializeProxyAuth();
 
 chrome.webRequest.onAuthRequired.addListener(
   async function (details) {
-    console.log(`details`, details);
+    // console.log(`details`, details);
     const { username, password } = await initializeProxyAuth()
     if ( username && password ) {
       console.log("Using cached credentials for proxy authentication...");
