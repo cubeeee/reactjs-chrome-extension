@@ -285,8 +285,40 @@ const handleFetchNewIp = async () => {
   return data;
 };
 
+const handleFetchCurrentIp = async () => {
+  const url = new URL(`${API_URL}/getCurrentProxy`);
+  const apiKey = await getApiKey();
+  let data = null;
+  const params = {
+    apiKey: apiKey || apiKeyLocal, 
+  };
+  // Append query parameters to URL
+  Object.keys(params).forEach(key => params[key] && url.searchParams.append(key, params[key]));
+  let success = false;
+  while (!success) {
+    try {
+      const response = await fetch(url.toString(), { method: 'GET' });
+      const result = await response.json();
+      if (result && result.data && result.data.proxy) {
+        console.log("Current proxy fetched:", result.data.proxy);
+        // await saveConfigProxy(result);
+        success = true; // Stop the loop on success
+        data = result.data;
+      } else {
+        console.error("Failed to fetch current proxy: Invalid response format");
+      }
+    } catch (error) {
+      console.error("Error fetching current proxy, retrying...", error);
+    }
+    if (!success) {
+      await sleep(10000); // Wait for 10 seconds before retrying
+    }
+  }
+  return data;
+};
+
 const initializeProxyAuth = async () => {
-  const data = await handleFetchNewIp();
+  const data = await handleFetchCurrentIp();
   return {
     username: data.username,
     password: data.password
